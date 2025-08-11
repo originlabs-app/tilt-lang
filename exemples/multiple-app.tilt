@@ -12,10 +12,10 @@ use db
 use ui
 
 // Schéma
-db.table("todos", schema:{ id:id, title:text, done:bool=false, created_at:time })
+db.table("todos", { id:id, title:text, done:bool=false, created_at:time })
 
 // API
-fn list_todos() -> json { return db.select("todos", {}, limit:200) }
+fn list_todos() -> json { return db.select("todos", {}, 200) }
 fn add_todo()  -> json {
   let b = http.request.body.json
   let row = db.insert("todos", { id:new_id(), title:b.title, created_at:now() })
@@ -23,7 +23,7 @@ fn add_todo()  -> json {
 }
 fn toggle_done() -> json {
   let id = http.params.id
-  let t = db.select("todos", { id:id }, limit:1)
+  let t = db.select("todos", { id:id }, 1)
   if len(t)==0 { return { ok:false, error:"not_found" } }
   db.update("todos", id, { done: !t[0].done })
   return { ok:true }
@@ -58,9 +58,9 @@ fn do_toggle(id:id) -> json { let r = http.post("/api/todos/"+id+"/t", {})
 use validate
 
 // Schémas
-db.table("products", schema:{ id:id, name:text, price_cents:int, image_url:text, stock:int=0, created_at:time })
-db.table("carts",    schema:{ id:id, created_at:time })
-db.table("cart_items", schema:{ id:id, cart_id:id, product_id:id, qty:int=1 })
+db.table("products", { id:id, name:text, price_cents:int, image_url:text, stock:int=0, created_at:time })
+db.table("carts",    { id:id, created_at:time })
+db.table("cart_items", { id:id, cart_id:id, product_id:id, qty:int=1 })
 
 fn ensure_cart() -> text {
   let cid = ui.cookie.get("cart_id")
@@ -68,19 +68,19 @@ fn ensure_cart() -> text {
   return cid
 }
 
-fn api_products() -> json { return db.select("products", {}, limit:200) }
+fn api_products() -> json { return db.select("products", {}, 200) }
 fn api_cart() -> json {
   let cid = ensure_cart(); let items = db.select("cart_items", { cart_id:cid })
   let out = []; let total = 0
   for it in items {
-    let p = db.select("products", { id:it.product_id }, limit:1)
+    let p = db.select("products", { id:it.product_id }, 1)
     if len(p)>0 { let line = it.qty * p[0].price_cents; total = total + line; out = out + [{ id:it.id, name:p[0].name, price_cents:p[0].price_cents, image_url:p[0].image_url, qty:it.qty, product_id:it.product_id, line_total:line }] }
   }
   return { cart_id:cid, items:out, total_cents:total }
 }
 fn api_add_to_cart() -> json {
   let b = http.request.body.json
-  let cid = ensure_cart(); let row = db.select("cart_items", { cart_id:cid, product_id:b.product_id }, limit:1)
+  let cid = ensure_cart(); let row = db.select("cart_items", { cart_id:cid, product_id:b.product_id }, 1)
   if len(row)==0 { 
     let qty = 1
     if b.qty { qty = b.qty }
@@ -126,9 +126,9 @@ ui.page "Cart" path "/cart" {
 use auth
 
 // Schémas
-db.table("users", schema:{ id:id, email:text, password_hash:text, full_name:text, role:text="user", created_at:time })
-db.table("contacts", schema:{ id:id, owner_id:id, name:text, email:text, company:text, phone:text, stage:text="lead", created_at:time })
-db.table("deals", schema:{ id:id, contact_id:id, owner_id:id, title:text, value_cents:int, status:text="open", step:text="new", created_at:time })
+db.table("users", { id:id, email:text, password_hash:text, full_name:text, role:text="user", created_at:time })
+db.table("contacts", { id:id, owner_id:id, name:text, email:text, company:text, phone:text, stage:text="lead", created_at:time })
+db.table("deals", { id:id, contact_id:id, owner_id:id, title:text, value_cents:int, status:text="open", step:text="new", created_at:time })
 
 guard require_auth(){ if !auth.is_authenticated(){ http.abort(401) } }
 
@@ -136,21 +136,21 @@ guard require_auth(){ if !auth.is_authenticated(){ http.abort(401) } }
 fn signup() -> json {
   let b = http.request.body.json
   let u = db.insert("users", { id:new_id(), email:b.email, password_hash:auth.hash_password(b.password), full_name:b.full_name, created_at:now() })
-  auth.set_session(token: auth.issue(user_id:u.id, claims:{ role:"user" }))
+  auth.set_session(auth.issue(u.id, { role:"user" }))
   return { ok:true }
 }
 fn signin() -> json {
   let b = http.request.body.json
-  let r = db.select("users", { email:b.email }, limit:1)
+  let r = db.select("users", { email:b.email }, 1)
   if len(r)==0 || !auth.verify_password(b.password, r[0].password_hash) { return { ok:false, error:"invalid_creds" } }
-  auth.set_session(token: auth.issue(user_id:r[0].id, claims:{ role:r[0].role }))
+  auth.set_session(auth.issue(r[0].id, { role:r[0].role }))
   return { ok:true }
 }
 route POST "/api/auth/signup" -> signup()
 route POST "/api/auth/signin" -> signin()
 
 // Contacts API
-fn contacts_list() -> json { let me = auth.current(); return db.select("contacts", { owner_id:me.id }, limit:500) }
+fn contacts_list() -> json { let me = auth.current(); return db.select("contacts", { owner_id:me.id }, 500) }
 fn contact_create() -> json {
   let me = auth.current(); let b = http.request.body.json
   let row = db.insert("contacts", { id:new_id(), owner_id:me.id, name:b.name, email:b.email, company:b.company, phone:b.phone, created_at:now() })
@@ -161,19 +161,23 @@ route POST "/api/contacts" use [require_auth] -> contact_create()
 
 // UI
 ui.navbar { brand "TILT CRM"; link "Dashboard" to "/"; link "Contacts" to "/contacts" }
-ui.page "Sign in" path "/signin" when !auth.is_authenticated() {
-  section pad=48 align:"center" { form id="f" on_submit=do_signin() width=420 { input email:text label "Email" required; input password:text type:"password" label "Password" required; button "Sign in" variant="primary" width:"100%" } }
+if !auth.is_authenticated() {
+  ui.page "Sign in" path "/signin" {
+    section pad=48 align:"center" { form id="f" on_submit=do_signin() width=420 { input email:text label "Email" required; input password:text type:"password" label "Password" required; button "Sign in" variant="primary" width:"100%" } }
+  }
 }
 fn do_signin() -> json { let f = ui.form.values; let r = http.post("/api/auth/signin", { email:f.email, password:f.password })
   if r.ok { return { redirect:"/" } } else { return { toast:"Invalid" } } }
 
-ui.page "Contacts" path "/contacts" when auth.is_authenticated() {
-  section pad=24 {
-    actions { button "New" on_click=open_new() }
-    let r = http.get("/api/contacts")
-    if r.ok {
-      table { thead ["Name","Email","Company","Phone"]; tbody for c in r.value.json { tr { td c.name; td c.email; td c.company; td c.phone } } }
-    } else { note "No contacts" }
+if auth.is_authenticated() {
+  ui.page "Contacts" path "/contacts" {
+    section pad=24 {
+      actions { button "New" on_click=open_new() }
+      let r = http.get("/api/contacts")
+      if r.ok {
+        table { thead ["Name","Email","Company","Phone"]; tbody for c in r.value.json { tr { td c.name; td c.email; td c.company; td c.phone } } }
+      } else { note "No contacts" }
+    }
   }
 }
 ui.dialog "new_contact" { form id="nc" on_submit=create_contact() { input name:text label "Name" required; input email:text label "Email"; input company:text label "Company"; input phone:text label "Phone"; button "Create" variant="primary" } }
@@ -184,11 +188,11 @@ fn create_contact() -> json { let f=ui.form.values
 
 // ============ 4) SITE WEB (landing + blog) ==== 
 // DB
-db.table("posts", schema:{ id:id, title:text, excerpt:text, body:text, published:bool=true, created_at:time })
+db.table("posts", { id:id, title:text, excerpt:text, body:text, published:bool=true, created_at:time })
 
 // API
-fn api_posts() -> json { return db.select("posts", { published:true }, limit:100) }
-fn api_post()  -> json { let id=http.params.id; let r=db.select("posts", { id:id }, limit:1); return len(r)==0 ? { error:"not_found" } : r[0] }
+fn api_posts() -> json { return db.select("posts", { published:true }, 100) }
+fn api_post()  -> json { let id=http.params.id; let r=db.select("posts", { id:id }, 1); if len(r)==0 { return { error:"not_found" } } else { return r[0] } }
 route GET "/api/posts"    -> api_posts()
 route GET "/api/posts/:id" -> api_post()
 

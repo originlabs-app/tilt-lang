@@ -15,7 +15,7 @@ use policy     // Guards & rôles (RBAC léger)
 // 1) Schémas de données
 // ---------------------------------------------
 
-db.table("users", schema:{
+db.table("users", {
   id: id,
   email: text,
   password_hash: text,
@@ -24,7 +24,7 @@ db.table("users", schema:{
   created_at: time
 })
 
-db.table("contacts", schema:{
+db.table("contacts", {
   id: id,
   owner_id: id,               // user.id (propriétaire)
   name: text,
@@ -35,7 +35,7 @@ db.table("contacts", schema:{
   created_at: time
 })
 
-db.table("deals", schema:{
+db.table("deals", {
   id: id,
   contact_id: id,
   owner_id: id,               // user.id
@@ -48,7 +48,7 @@ db.table("deals", schema:{
   created_at: time
 })
 
-db.table("notes", schema:{
+db.table("notes", {
   id: id,
   contact_id: id,
   author_id: id,
@@ -73,7 +73,7 @@ guard require_auth() {
 
 guard require_perm(perm:text) {
   let me = auth.current()
-  if !policy.allowed(user: me, perm: perm) { http.abort(403) }
+  if !policy.allowed(me, perm) { http.abort(403) }
 }
 
 // ---------------------------------------------
@@ -82,28 +82,28 @@ guard require_perm(perm:text) {
 
 fn api_signup() -> json {
   let b = http.request.body.json
-  validate.object(b, {
+  if !validate.object(b, {
     email: validate.email(),
-    password: validate.text(min:8, max:200),
-    full_name: validate.text(min:2, max:120)
-  }) or return { ok:false, error:"invalid_input" }
+    password: validate.text(8, 200),
+    full_name: validate.text(2, 120)
+  }) { return { ok:false, error:"invalid_input" } }
 
   // hash par runtime (argon2/bcrypt)
   let h = auth.hash_password(b.password)
   let u = db.insert("users", { id:new_id(), email:b.email, password_hash:h, full_name:b.full_name, created_at:now() })
-  let tok = auth.issue(user_id:u.id, claims:{ role:"user" })
-  auth.set_session(token: tok) // Set-Cookie HttpOnly
+  let tok = auth.issue(u.id, { role:"user" })
+  auth.set_session(tok) // Set-Cookie HttpOnly
   return { ok:true, user:{ id:u.id, email:u.email, full_name:u.full_name } }
 }
 
 fn api_signin() -> json {
   let b = http.request.body.json
-  validate.object(b, { email: validate.email(), password: validate.text(min:1) }) or return { ok:false, error:"invalid_input" }
-  let rows = db.select("users", { email:b.email }, limit:1)
+  if !validate.object(b, { email: validate.email(), password: validate.text(1) }) { return { ok:false, error:"invalid_input" } }
+  let rows = db.select("users", { email:b.email }, 1)
   if len(rows)==0 { return { ok:false, error:"invalid_creds" } }
   if !auth.verify_password(b.password, rows[0].password_hash) { return { ok:false, error:"invalid_creds" } }
-  let tok = auth.issue(user_id:rows[0].id, claims:{ role:rows[0].role })
-  auth.set_session(token: tok)
+  let tok = auth.issue(rows[0].id, { role:rows[0].role })
+  auth.set_session(tok)
   return { ok:true, user:{ id:rows[0].id, email:rows[0].email, full_name:rows[0].full_name, role:rows[0].role } }
 }
 
@@ -123,9 +123,11 @@ fn contacts_list() -> json {
   let me = auth.current()
   let q = http.request.query
   // Filtre par stage + recherche plein texte simple (name/email/company)
-  let stage = q.stage or ""
-  let search = q.q or ""
-  let rows = db.select("contacts", { owner_id: me.id }, limit:500)
+  let stage = ""
+  if q.stage { stage = q.stage }
+  let search = ""
+  if q.q { search = q.q }
+  let rows = db.select("contacts", { owner_id: me.id }, 500)
   let out = []
   for c in rows {
     if stage!="" && c.stage!=stage { continue }
@@ -138,12 +140,12 @@ fn contacts_list() -> json {
 fn contact_create() -> json {
   let me = auth.current()
   let b = http.request.body.json
-  validate.object(b, {
-    name: validate.text(min:2, max:120),
-    email: validate.email(optional:true),
-    company: validate.text(optional:true, max:120),
-    phone: validate.text(optional:true, max:40)
-  }) or return { ok:false, error:"invalid_input" }
+  if !validate.object(b, {
+    name: validate.text(2, 120),
+    email: validate.email(true),
+    company: validate.text(true, 120),
+    phone: validate.text(true, 40)
+  }) { return { ok:false, error:"invalid_input" } }
 
   let row = db.insert("contacts", { id:new_id(), owner_id:me.id, name:b.name, email:b.email, company:b.company, phone:b.phone, created_at:now() })
   return { ok:true, contact: row }
@@ -151,16 +153,18 @@ fn contact_create() -> json {
 
 fn contact_update() -> json {
   let me = auth.current(); let id = http.params.id
-  let c = db.select("contacts", { id:id }, limit:1)
+  let c = db.select("contacts", { id:id }, 1)
   if len(c)==0 || c[0].owner_id!=me.id { http.abort(404) }
   let b = http.request.body.json
-  db.update("contacts", id, { name:b.name, email:b.email, company:b.company, phone:b.phone, stage:(b.stage or c[0].stage) })
+  let stage_new = c[0].stage
+  if b.stage { stage_new = b.stage }
+  db.update("contacts", id, { name:b.name, email:b.email, company:b.company, phone:b.phone, stage:stage_new })
   return { ok:true }
 }
 
 fn contact_delete() -> json {
   let me = auth.current(); let id = http.params.id
-  let c = db.select("contacts", { id:id }, limit:1)
+  let c = db.select("contacts", { id:id }, 1)
   if len(c)==0 || c[0].owner_id!=me.id { http.abort(404) }
   db.delete("contacts", id); return { ok:true }
 }
@@ -176,37 +180,45 @@ route DELETE "/api/contacts/:id"         use [require_auth, require_perm("contac
 
 fn deals_by_step() -> json {
   let me = auth.current()
-  let deals = db.select("deals", { owner_id: me.id }, limit:1000)
+  let deals = db.select("deals", { owner_id: me.id }, 1000)
   let steps = ["new","discovery","proposal","negotiation","closed"]
   let board = {}
   for s in steps { board[s] = [] }
-  for d in deals { board[d.step] = (board[d.step] or []) + [d] }
+  for d in deals {
+    let prev = []
+    if board[d.step] { prev = board[d.step] }
+    board[d.step] = prev + [d]
+  }
   return board
 }
 
 fn deal_create() -> json {
   let me = auth.current(); let b = http.request.body.json
-  validate.object(b, {
+  if !validate.object(b, {
     contact_id: validate.text(),
-    title: validate.text(min:2, max:200),
-    value_cents: validate.int(min:0)
-  }) or return { ok:false, error:"invalid_input" }
+    title: validate.text(2, 200),
+    value_cents: validate.int(0)
+  }) { return { ok:false, error:"invalid_input" } }
   let row = db.insert("deals", { id:new_id(), contact_id:b.contact_id, owner_id:me.id, title:b.title, value_cents:b.value_cents, created_at:now() })
   return { ok:true, deal: row }
 }
 
 fn deal_update() -> json {
   let me = auth.current(); let id = http.params.id
-  let d = db.select("deals", { id:id }, limit:1)
+  let d = db.select("deals", { id:id }, 1)
   if len(d)==0 || d[0].owner_id!=me.id { http.abort(404) }
   let b = http.request.body.json
-  db.update("deals", id, { title:b.title, value_cents:b.value_cents, step:(b.step or d[0].step), status:(b.status or d[0].status), close_date:b.close_date })
+  let step_new = d[0].step
+  if b.step { step_new = b.step }
+  let status_new = d[0].status
+  if b.status { status_new = b.status }
+  db.update("deals", id, { title:b.title, value_cents:b.value_cents, step:step_new, status:status_new, close_date:b.close_date })
   return { ok:true }
 }
 
 fn deal_delete() -> json {
   let me = auth.current(); let id = http.params.id
-  let d = db.select("deals", { id:id }, limit:1)
+  let d = db.select("deals", { id:id }, 1)
   if len(d)==0 || d[0].owner_id!=me.id { http.abort(404) }
   db.delete("deals", id); return { ok:true }
 }
@@ -219,14 +231,15 @@ route DELETE "/api/deals/:id"            use [require_auth, require_perm("deals:
 // KPIs simples (pipeline value, win rate)
 fn kpis() -> json {
   let me = auth.current()
-  let deals = db.select("deals", { owner_id: me.id }, limit:2000)
+  let deals = db.select("deals", { owner_id: me.id }, 2000)
   let total_open = 0; let total_won = 0; let won = 0; let closed = 0
   for d in deals {
     if d.status=="open" { total_open = total_open + d.value_cents }
     if d.status=="won"  { total_won = total_won + d.value_cents; won = won + 1; closed = closed + 1 }
     if d.status=="lost" { closed = closed + 1 }
   }
-  let win_rate = (closed>0) ? (won*100/closed) : 0
+  let win_rate = 0
+  if closed>0 { win_rate = won*100/closed }
   return { total_open_cents: total_open, total_won_cents: total_won, win_rate: win_rate }
 }
 
@@ -238,14 +251,14 @@ route GET "/api/kpis" use [require_auth] -> kpis()
 
 fn note_add() -> json {
   let me = auth.current(); let b = http.request.body.json
-  validate.object(b, { contact_id: validate.text(), body: validate.text(min:1, max:2000) }) or return { ok:false, error:"invalid_input" }
+  if !validate.object(b, { contact_id: validate.text(), body: validate.text(1, 2000) }) { return { ok:false, error:"invalid_input" } }
   let row = db.insert("notes", { id:new_id(), contact_id:b.contact_id, author_id:me.id, body:b.body, created_at:now() })
   return { ok:true, note: row }
 }
 
 fn notes_list() -> json {
   let cid = http.params.contact_id
-  return db.select("notes", { contact_id: cid }, limit:500)
+  return db.select("notes", { contact_id: cid }, 500)
 }
 
 route POST "/api/notes" use [require_auth] -> note_add()
@@ -262,101 +275,116 @@ ui.navbar {
   link "Dashboard" to "/"
   link "Contacts"  to "/contacts"
   link "Deals"     to "/deals"
-  right {
-    button "Sign in"  link to "/signin" when !auth.is_authenticated()
-    menu label (auth.current().full_name or "") when auth.is_authenticated() {
-      item "Settings" link to "/settings"
-      item "Sign out" on click do_signout()
+    right {
+      if !auth.is_authenticated() {
+        button "Sign in"  link to "/signin"
+      }
+      let full = ""
+      if auth.current().full_name { full = auth.current().full_name }
+      if auth.is_authenticated() {
+        menu label full {
+          item "Settings" link to "/settings"
+          item "Sign out" on click do_signout()
+        }
+      }
     }
-  }
 }
 
-fn do_signout() -> json { let r = http.post(url:"/api/auth/signout"); return { redirect: "/signin" } }
+fn do_signout() -> json { let r = http.post("/api/auth/signout"); return { redirect: "/signin" } }
 
 // ---- Sign in / Sign up ----
-ui.page "Sign in" path "/signin" when !auth.is_authenticated() {
-  section pad=48 align="center" {
-    title "Welcome back"
-    form id "f_signin" on submit signin() width=420 {
-      input email:text label "Email" required
-      input password:text label "Password" type="password" required
-      button "Sign in" variant="primary" width="100%"
-      text "No account?" link "Create one" to "/signup"
+if !auth.is_authenticated() {
+  ui.page "Sign in" path "/signin" {
+    section pad=48 align="center" {
+      title "Welcome back"
+      form id "f_signin" on submit signin() width=420 {
+        input email:text label "Email" required
+        input password:text label "Password" type="password" required
+        button "Sign in" variant="primary" width="100%"
+        text "No account?" link "Create one" to "/signup"
+      }
     }
   }
 }
 
 fn signin() -> json {
   let f = ui.form.values
-  let r = http.post(url:"/api/auth/signin", json:{ email:f.email, password:f.password })
+  let r = http.post("/api/auth/signin", { email:f.email, password:f.password })
   if r.ok && r.value.ok { return { redirect:"/" } } else { return { toast:"Invalid credentials" } }
 }
 
-ui.page "Sign up" path "/signup" when !auth.is_authenticated() {
-  section pad=48 align="center" {
-    title "Create your account"
-    form id "f_signup" on submit signup() width=480 {
-      input full_name:text label "Full name" required
-      input email:text label "Email" required
-      input password:text label "Password" type="password" required
-      button "Create account" variant="primary" width="100%"
+if !auth.is_authenticated() {
+  ui.page "Sign up" path "/signup" {
+    section pad=48 align="center" {
+      title "Create your account"
+      form id "f_signup" on submit signup() width=480 {
+        input full_name:text label "Full name" required
+        input email:text label "Email" required
+        input password:text label "Password" type="password" required
+        button "Create account" variant="primary" width="100%"
+      }
     }
   }
 }
 
 fn signup() -> json {
   let f = ui.form.values
-  let r = http.post(url:"/api/auth/signup", json:{ full_name:f.full_name, email:f.email, password:f.password })
+  let r = http.post("/api/auth/signup", { full_name:f.full_name, email:f.email, password:f.password })
   if r.ok && r.value.ok { return { redirect:"/" } } else { return { toast:"Signup failed" } }
 }
 
 // ---- Dashboard ----
-ui.page "Dashboard" path "/" when auth.is_authenticated() {
-  let k = http.get(url:"/api/kpis")
-  section pad=24 {
-    grid cols=3 cols_md=1 gap=16 {
-      card { title "Pipeline" text ((k.value.json.total_open_cents/100)+" € ouverts") }
-      card { title "Won"      text ((k.value.json.total_won_cents/100)+" € gagnés") }
-      card { title "Win rate" text (k.value.json.win_rate+" %") }
+if auth.is_authenticated() {
+  ui.page "Dashboard" path "/" {
+    let k = http.get("/api/kpis")
+    section pad=24 {
+      grid cols=3 cols_md=1 gap=16 {
+        card { title "Pipeline" text ((k.value.json.total_open_cents/100)+" € ouverts") }
+        card { title "Won"      text ((k.value.json.total_won_cents/100)+" € gagnés") }
+        card { title "Win rate" text (k.value.json.win_rate+" %") }
+      }
     }
   }
 }
 
 // ---- Contacts list + detail ----
-ui.page "Contacts" path "/contacts" when auth.is_authenticated() {
-  section pad=24 {
-    form id "search" on submit search_contacts() inline {
-      input q:text label "Search" placeholder "name, email, company"
-      select stage:text label "Stage" options ["","lead","qualified","customer","churn"]
-      button "Filter"
-      button "New" on click open_new_contact()
-    }
+if auth.is_authenticated() {
+  ui.page "Contacts" path "/contacts" {
+    section pad=24 {
+      form id "search" on submit search_contacts() inline {
+        input q:text label "Search" placeholder "name, email, company"
+        select stage:text label "Stage" options ["","lead","qualified","customer","churn"]
+        button "Filter"
+        button "New" on click open_new_contact()
+      }
 
-    let r = http.get(url:"/api/contacts", query: ui.form.values)
-    if r.ok {
-      table {
-        thead ["Name","Email","Company","Stage","Actions"]
-        tbody for c in r.value.json {
-          tr {
-            td c.name
-            td c.email
-            td c.company
-            td badge c.stage
-            td { button "Open" link to ("/contacts/"+c.id) }
+      let r = http.get("/api/contacts", ui.form.values)
+      if r.ok {
+        table {
+          thead ["Name","Email","Company","Stage","Actions"]
+          tbody for c in r.value.json {
+            tr {
+              td c.name
+              td c.email
+              td c.company
+              td badge c.stage
+              td { button "Open" link to ("/contacts/"+c.id) }
+            }
           }
         }
-      }
-    } else { note "No contacts yet." }
+      } else { note "No contacts yet." }
+    }
   }
 }
 
 fn search_contacts() -> json { return { reload:true } }
 
-ui.page "Contact" path "/contacts/:id" when auth.is_authenticated() {
-  let id = ui.params.id
-  let items = http.get(url:"/api/notes/"+id)
-  section pad=24 {
-    grid cols=3 cols_md=1 gap=24 {
+if auth.is_authenticated() {
+  ui.page "Contact" path "/contacts/:id" {
+    let id = ui.params.id
+    let items = http.get("/api/notes/"+id)
+    section pad=24 {
+      grid cols=3 cols_md=1 gap=24 {
       // Colonne 1–2 : détails
       span col=2 {
         // (MVP) simple formulaire d'édition
@@ -380,34 +408,39 @@ ui.page "Contact" path "/contacts/:id" when auth.is_authenticated() {
           list for n in items.value.json { card { text n.body meta n.created_at } }
         }
       }
+      }
     }
   }
 }
 
 fn save_contact(id:text) -> json {
   let f = ui.form.values
-  let r = http.put(url:("/api/contacts/"+id), json:{ name:f.name, email:f.email, company:f.company, phone:f.phone, stage:f.stage })
+  let r = http.put("/api/contacts/"+id, { name:f.name, email:f.email, company:f.company, phone:f.phone, stage:f.stage })
   if r.ok { return { toast:"Saved" } } else { return { toast:"Save error" } }
 }
 
 fn add_note(cid:text) -> json {
   let f = ui.form.values
-  let r = http.post(url:"/api/notes", json:{ contact_id:cid, body:f.body })
-  return r.ok ? { reload:true } : { toast:"Error" }
+  let r = http.post("/api/notes", { contact_id:cid, body:f.body })
+  if r.ok { return { reload:true } } else { return { toast:"Error" } }
 }
 
 // ---- Deals board (Kanban) ----
-ui.page "Deals" path "/deals" when auth.is_authenticated() {
-  section pad=24 {
-    actions { button "New deal" on click open_new_deal() }
-    let b = http.get(url:"/api/deals/board")
-    if b.ok {
-      grid cols=5 cols_md=1 gap=16 {
-        for step in ["new","discovery","proposal","negotiation","closed"] {
-          card { title step
-            list for d in (b.value.json[step] or []) {
-              card { title d.title text ((d.value_cents/100)+" €")
-                actions { button "Open" on click open_deal(d.id) }
+if auth.is_authenticated() {
+  ui.page "Deals" path "/deals" {
+    section pad=24 {
+      actions { button "New deal" on click open_new_deal() }
+      let b = http.get("/api/deals/board")
+      if b.ok {
+        grid cols=5 cols_md=1 gap=16 {
+          for step in ["new","discovery","proposal","negotiation","closed"] {
+            card { title step
+              let items = b.value.json[step]
+              if !items { items = [] }
+              list for d in items {
+                card { title d.title text ((d.value_cents/100)+" €")
+                  actions { button "Open" on click open_deal(d.id) }
+                }
               }
             }
           }
@@ -420,16 +453,18 @@ ui.page "Deals" path "/deals" when auth.is_authenticated() {
 // Dialogs (MVP simulés via pages modales)
 fn open_new_contact() -> json { return { dialog:"new_contact" } }
 ui.dialog "new_contact" { form id "nc" on submit create_contact() { input name:text label "Name" required input email:text label "Email" input company:text label "Company" input phone:text label "Phone" button "Create" variant:"primary" } }
-fn create_contact() -> json { let f = ui.form.values; let r = http.post(url:"/api/contacts", json:{ name:f.name, email:f.email, company:f.company, phone:f.phone }); return r.ok ? { reload:true } : { toast:"Error" } }
+fn create_contact() -> json { let f = ui.form.values; let r = http.post("/api/contacts", { name:f.name, email:f.email, company:f.company, phone:f.phone }); if r.ok { return { reload:true } } else { return { toast:"Error" } } }
 
 fn open_new_deal() -> json { return { dialog:"new_deal" } }
 ui.dialog "new_deal" { form id "nd" on submit create_deal() { input contact_id:text label "Contact ID" required input title:text label "Title" required input value_cents:int label "Amount (cents)" required button "Create" variant:"primary" } }
-fn create_deal() -> json { let f = ui.form.values; let r = http.post(url:"/api/deals", json:{ contact_id:f.contact_id, title:f.title, value_cents:f.value_cents }); return r.ok ? { reload:true } : { toast:"Error" } }
+fn create_deal() -> json { let f = ui.form.values; let r = http.post("/api/deals", { contact_id:f.contact_id, title:f.title, value_cents:f.value_cents }); if r.ok { return { reload:true } } else { return { toast:"Error" } } }
 
 fn open_deal(id:text) -> json { return { route:("/deals/"+id) } }
 
 // Settings (placeholder)
-ui.page "Settings" path "/settings" when auth.is_authenticated() { section pad=24 { title "Settings" text "Profile & preferences soon." } }
+if auth.is_authenticated() {
+  ui.page "Settings" path "/settings" { section pad=24 { title "Settings" text "Profile & preferences soon." } }
+}
 
 // ---------------------------------------------
 // 8) Utils (helpers de confort)
