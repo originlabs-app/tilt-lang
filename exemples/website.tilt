@@ -11,7 +11,7 @@ use ui                        // Importe le module d'interface déclarative (ren
 // 1) Modèle de données (schémas de tables)
 // -------------------------------
 
-db.table("blog_posts", schema:{ // Déclare/assure l'existence de la table 'blog_posts' avec ce schéma
+db.table("blog_posts", { // Déclare/assure l'existence de la table 'blog_posts' avec ce schéma
   id: id,                       // Colonne 'id' (identifiant unique)
   title: text,                  // Titre de l'article (texte)
   excerpt: text,                // Extrait/accroche (texte court)
@@ -20,7 +20,7 @@ db.table("blog_posts", schema:{ // Déclare/assure l'existence de la table 'blog
   created_at: time              // Timestamp de création
 })                              // Fin de la déclaration de la table 'blog_posts'
 
-db.table("contacts", schema:{   // Déclare/assure l'existence de la table 'contacts'
+db.table("contacts", {   // Déclare/assure l'existence de la table 'contacts'
   id: id,                       // Identifiant du message
   email: text,                  // Email de l'expéditeur
   subject: text,                // Sujet du message
@@ -33,7 +33,7 @@ db.table("contacts", schema:{   // Déclare/assure l'existence de la table 'cont
 // -------------------------------
 
 fn seed_posts() -> json {       // Fonction qui insère des posts par défaut, renvoie un JSON
-  let rows = db.select("blog_posts", {}, limit: 1) // Lit 1 ligne pour savoir si la table contient déjà des données
+  let rows = db.select("blog_posts", {}, 1) // Lit 1 ligne pour savoir si la table contient déjà des données
   if len(rows) > 0 {            // Si au moins un post existe
     return { ok: true, seeded: false } // On indique qu'on n'a rien seedé
   }                             // Fin du if
@@ -78,7 +78,7 @@ fn seed_posts() -> json {       // Fonction qui insère des posts par défaut, r
 // -------------------------------
 
 fn api_list_posts() -> json {   // Endpoint pour lister les articles publiés
-  let rows = db.select("blog_posts", { published: true }, limit: 100) // Sélectionne jusqu'à 100 posts publiés
+  let rows = db.select("blog_posts", { published: true }, 100) // Sélectionne jusqu'à 100 posts publiés
   let out = []                  // Initialise la liste de sortie
   for r in rows {               // Pour chaque ligne renvoyée par la DB
     out = out + [{             // Ajoute un objet simplifié à la liste de sortie (concaténation de liste)
@@ -93,7 +93,7 @@ fn api_list_posts() -> json {   // Endpoint pour lister les articles publiés
 
 fn api_get_post() -> json {     // Endpoint pour obtenir le détail d'un article
   let pid = http.params.id      // Récupère l'identifiant depuis l'URL (paramètre de chemin)
-  let rows = db.select("blog_posts", { id: pid }, limit: 1) // Cherche le post correspondant
+  let rows = db.select("blog_posts", { id: pid }, 1) // Cherche le post correspondant
   if len(rows) == 0 {           // Si aucun trouvé
     return { error: "not_found" } // Renvoie une erreur simple
   }                             // Fin du if
@@ -170,7 +170,7 @@ ui.page "Home" {                // Déclare la page d'accueil (chemin par défau
 ui.page "Blog" path "/blog" {  // Déclare la page Blog, accessible via /blog
   section {                     // Section principale
     title "Derniers articles"   // Titre de section
-    let resp = http.get(url: "/api/posts") // Appelle l'API interne pour récupérer les posts
+    let resp = http.get("/api/posts") // Appelle l'API interne pour récupérer les posts
     if resp.ok {                // Si la requête a réussi
       list for p in resp.value.json { // Itère sur le tableau JSON renvoyé
         card link to ("/blog/" + p.id) { // Chaque post est une carte cliquable vers /blog/:id
@@ -187,7 +187,7 @@ ui.page "Blog" path "/blog" {  // Déclare la page Blog, accessible via /blog
 
 ui.page "Post" path "/blog/:id" { // Post detail page, :id path param
   let id = ui.params.id
-  let resp = http.get(url: "/api/posts/" + id)
+  let resp = http.get("/api/posts/" + id)
 
   if resp.ok {
     let post = resp.value.json
@@ -217,7 +217,7 @@ ui.page "Contact" path "/contact" {
 
 fn send_contact() -> json {       // Fonction appelée lors de la soumission du formulaire
   let f = ui.form.values          // Récupère les valeurs du formulaire depuis le runtime UI
-  let r = http.post(url: "/api/contact", json: { // Envoie ces valeurs à l'API de contact
+  let r = http.post("/api/contact", { // Envoie ces valeurs à l'API de contact
     email: f.email,               // Champ email
     subject: f.subject,           // Champ sujet
     message: f.message            // Champ message
