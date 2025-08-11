@@ -3,7 +3,7 @@ use ui
 use http
 
 // --- Data ---
-db.table("todos", schema:{ id:id, title:text, done:bool=false, created:time })
+db.table("todos", { id:id, title:text, done:bool=false, created:time })
 
 // --- Actions ---
 fn add_todo(title:text) -> json {
