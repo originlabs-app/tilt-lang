@@ -1,0 +1,255 @@
+// ===============================
+// TILT — Site web complet commenté LIGNE PAR LIGNE
+// Objectif : chaque ligne a une explication pour comprendre le flux complet
+// ===============================
+
+use http                      // Importe le module standard HTTP (requêtes entrantes/sortantes)
+use db                        // Importe le module base de données (SQLite par défaut)
+use ui                        // Importe le module d'interface déclarative (rendu HTML/CSS/JS par le runtime)
+
+// -------------------------------
+// 1) Modèle de données (schémas de tables)
+// -------------------------------
+
+db.table("blog_posts", schema:{ // Déclare/assure l'existence de la table 'blog_posts' avec ce schéma
+  id: id,                       // Colonne 'id' (identifiant unique)
+  title: text,                  // Titre de l'article (texte)
+  excerpt: text,                // Extrait/accroche (texte court)
+  body: text,                   // Contenu complet (texte)
+  published: bool = true,       // Drapeau de publication (booléen), valeur par défaut true
+  created_at: time              // Timestamp de création
+})                              // Fin de la déclaration de la table 'blog_posts'
+
+db.table("contacts", schema:{   // Déclare/assure l'existence de la table 'contacts'
+  id: id,                       // Identifiant du message
+  email: text,                  // Email de l'expéditeur
+  subject: text,                // Sujet du message
+  message: text,                // Corps du message
+  created_at: time              // Timestamp d'enregistrement
+})                              // Fin de la déclaration de la table 'contacts'
+
+// -------------------------------
+// 2) Seed (données initiales) et helpers
+// -------------------------------
+
+fn seed_posts() -> json {       // Fonction qui insère des posts par défaut, renvoie un JSON
+  let rows = db.select("blog_posts", {}, limit: 1) // Lit 1 ligne pour savoir si la table contient déjà des données
+  if len(rows) > 0 {            // Si au moins un post existe
+    return { ok: true, seeded: false } // On indique qu'on n'a rien seedé
+  }                             // Fin du if
+
+  db.insert("blog_posts", {     // Insère un premier post
+    id: new_id(),               // Génère un nouvel identifiant unique
+    title: "Bienvenue sur TILT", // Titre du post
+    excerpt: "Un langage IA-native pour créer des apps en minutes.", // Extrait
+    body: "TILT unifie UI, HTTP et DB dans un seul fichier. C'est LLM-friendly et humain-friendly.", // Corps
+    published: true,            // Publié
+    created_at: now()           // Timestamp actuel
+  })                            // Fin de l'insertion
+
+  db.insert("blog_posts", {     // Insère un deuxième post
+    id: new_id(),               // Nouvel ID
+    title: "Pourquoi TILT ?",   // Titre
+    excerpt: "Moins d'ambiguïté, plus de fiabilité.", // Extrait
+    body: "La syntaxe de TILT est minimale, avec une seule façon de faire chaque chose.", // Corps
+    published: true,            // Publié
+    created_at: now()           // Date
+  })                            // Fin
+
+  db.insert("blog_posts", {     // Insère un troisième post
+    id: new_id(),               // ID unique
+    title: "Roadmap",           // Titre
+    excerpt: "MVP → V1 → V2 (WASM, tasks, chain)", // Extrait
+    body: "Nous ajoutons UI avancée, interop Python/JS et compilation WASM.", // Corps
+    published: true,            // Publié
+    created_at: now()           // Date
+  })                            // Fin
+
+  return { ok: true, seeded: true } // Indique que le seed a été effectué
+}                               // Fin de la fonction seed_posts
+
+// Remarque :
+// - now() fournit l'heure courante
+// - new_id() génère un identifiant (uuid)
+// - len(x) retourne la taille d'une liste
+
+// -------------------------------
+// 3) API — Blog
+// -------------------------------
+
+fn api_list_posts() -> json {   // Endpoint pour lister les articles publiés
+  let rows = db.select("blog_posts", { published: true }, limit: 100) // Sélectionne jusqu'à 100 posts publiés
+  let out = []                  // Initialise la liste de sortie
+  for r in rows {               // Pour chaque ligne renvoyée par la DB
+    out = out + [{             // Ajoute un objet simplifié à la liste de sortie (concaténation de liste)
+      id: r.id,                // Copie l'id
+      title: r.title,          // Copie le titre
+      excerpt: r.excerpt,      // Copie l'extrait
+      created_at: r.created_at // Copie la date de création
+    }]                          // Fin de l'objet ajouté
+  }                             // Fin de la boucle
+  return out                    // Renvoie la liste de posts
+}                               // Fin de la fonction api_list_posts
+
+fn api_get_post() -> json {     // Endpoint pour obtenir le détail d'un article
+  let pid = http.params.id      // Récupère l'identifiant depuis l'URL (paramètre de chemin)
+  let rows = db.select("blog_posts", { id: pid }, limit: 1) // Cherche le post correspondant
+  if len(rows) == 0 {           // Si aucun trouvé
+    return { error: "not_found" } // Renvoie une erreur simple
+  }                             // Fin du if
+  return rows[0]                // Renvoie la première (et unique) ligne trouvée
+}                               // Fin de la fonction api_get_post
+
+// -------------------------------
+// 4) API — Contact
+// -------------------------------
+
+fn api_contact() -> json {      // Endpoint pour créer un message de contact
+  let b = http.request.body.json // Récupère le JSON envoyé dans la requête
+
+  if b.email == "" {            // Validation: email requis
+    return { ok:false, error: "email_required" } // Retourne erreur si manquant
+  }                             // Fin du if
+  if b.message == "" {          // Validation: message requis
+    return { ok:false, error: "message_required" } // Retourne erreur si manquant
+  }                             // Fin du if
+
+  let row = db.insert("contacts", { // Insère le message de contact en DB
+    id: new_id(),               // ID unique
+    email: b.email,             // Email fourni
+    subject: b.subject,         // Sujet fourni
+    message: b.message,         // Message fourni
+    created_at: now()           // Timestamp d'insertion
+  })                            // Fin insertion
+
+  return { ok: true, saved: row.id } // Confirme la sauvegarde avec l'id
+}                               // Fin de la fonction api_contact
+
+// -------------------------------
+// 5) Déclaration des routes HTTP
+// -------------------------------
+
+route GET "/api/posts" -> api_list_posts()   // Route GET pour lister les posts (appelle api_list_posts)
+route GET "/api/posts/:id" -> api_get_post() // Route GET pour récupérer un post par id (appelle api_get_post)
+route POST "/api/contact" -> api_contact()    // Route POST pour envoyer un message de contact (appelle api_contact)
+
+route POST "/admin/seed" -> seed_posts()      // Route POST optionnelle pour initialiser la base (seed)
+
+// -------------------------------
+// 6) UI — Pages
+// -------------------------------
+
+ui.page "Home" {                // Déclare la page d'accueil (chemin par défaut "/")
+  header {                      // En-tête visuelle de la page
+    title "TILT — AI‑Native Fullstack Language" // Titre affiché en grand
+    subtitle "From prompt to production in minutes" // Sous-titre
+    actions {                   // Zone d'actions (boutons)
+      button "Voir le blog" link to "/blog"     // Bouton qui redirige vers la page blog
+      button "Nous contacter" link to "/contact" // Bouton qui redirige vers la page contact
+    }                           // Fin de la zone d'actions
+  }                             // Fin de l'entête
+
+  section {                     // Section de contenu
+    grid cols=3 gap=24 {        // Grille responsive à 3 colonnes avec espace de 24px
+      card {                    // Carte #1
+        title "LLM‑friendly"    // Titre carte
+        text "Syntaxe minimale, une seule façon de faire." // Texte carte
+      }                         // Fin carte #1
+      card {                    // Carte #2
+        title "Fullstack"       // Titre carte
+        text "HTTP, DB, UI et Routes dans un seul fichier." // Texte carte
+      }                         // Fin carte #2
+      card {                    // Carte #3
+        title "Portable"        // Titre carte
+        text "Runtime léger, exécutable partout." // Texte carte
+      }                         // Fin carte #3
+    }                           // Fin de la grille
+  }                             // Fin de la section
+}                               // Fin de la page Home
+
+ui.page "Blog" path "/blog" {  // Déclare la page Blog, accessible via /blog
+  section {                     // Section principale
+    title "Derniers articles"   // Titre de section
+    let resp = http.get(url: "/api/posts") // Appelle l'API interne pour récupérer les posts
+    if resp.ok {                // Si la requête a réussi
+      list for p in resp.value.json { // Itère sur le tableau JSON renvoyé
+        card link to ("/blog/" + p.id) { // Chaque post est une carte cliquable vers /blog/:id
+          title p.title         // Affiche le titre du post
+          text p.excerpt        // Affiche l'extrait
+          meta p.created_at     // Affiche la date
+        }                       // Fin de la carte
+      }                         // Fin de la liste
+    } else {                    // Sinon, si l'appel API a échoué
+      note "Impossible de charger les articles." // Affiche un message d'erreur utilisateur
+    }                           // Fin du else
+  }                             // Fin de la section
+}                               // Fin de la page Blog
+
+ui.page "Post" path "/blog/:id" { // Page de détail d'un article, :id est un paramètre d'URL
+  let id = ui.params.id          // Récupère le paramètre :id fourni par le runtime UI
+  let resp = http.get(url: "/api/posts/" + id) // Appelle l'API interne pour ce post
+
+  if resp.ok {                   // Si requête OK
+    let post = resp.value.json   // Récupère l'objet post du JSON
+    article {                    // Bloc article (mise en page dédiée)
+      title post.title           // Titre de l'article
+      text post.body             // Corps/texte de l'article
+      meta post.created_at       // Date
+      actions { button "← Tous les posts" link to "/blog" } // Bouton retour vers la liste
+    }                            // Fin bloc article
+  } else {                       // Si l'appel a échoué
+    note "Article introuvable"   // Message d'erreur utilisateur
+  }                              // Fin du else
+}                                // Fin de la page Post
+
+ui.page "Contact" path "/contact" { // Page de contact
+  section {                      // Section principale
+    title "Nous contacter"       // Titre de section
+    form id "contactForm" on submit send_contact() { // Formulaire avec un id et une action à la soumission
+      input email:text label "Email" placeholder "vous@exemple.com" required // Champ email obligatoire
+      input subject:text label "Sujet" placeholder "Sujet du message"        // Champ sujet (optionnel ici)
+      textarea message:text label "Message" placeholder "Écrivez votre message..." required // Champ message obligatoire
+      button "Envoyer"            // Bouton de soumission
+    }                              // Fin du formulaire
+    note "Nous répondons en 24h." // Note d'information
+  }                                // Fin de la section
+}                                  // Fin de la page Contact
+
+fn send_contact() -> json {       // Fonction appelée lors de la soumission du formulaire
+  let f = ui.form.values          // Récupère les valeurs du formulaire depuis le runtime UI
+  let r = http.post(url: "/api/contact", json: { // Envoie ces valeurs à l'API de contact
+    email: f.email,               // Champ email
+    subject: f.subject,           // Champ sujet
+    message: f.message            // Champ message
+  })                              // Fin de l'appel HTTP POST
+  if r.ok {                       // Si l'API répond OK
+    return { toast: "Message envoyé ✅" } // Retourne une instruction UI : afficher un toast de succès
+  } else {                        // Sinon
+    return { toast: "Erreur d'envoi ❌" } // Affiche un toast d'erreur
+  }                                // Fin du else
+}                                  // Fin de la fonction send_contact
+
+// -------------------------------
+// 7) Navigation et thème
+// -------------------------------
+
+ui.navbar {                       // Barre de navigation en haut du site
+  brand "TILT"                   // Nom/logo de marque affiché
+  link "Accueil" to "/"          // Lien vers l'accueil
+  link "Blog" to "/blog"         // Lien vers le blog
+  link "Contact" to "/contact"   // Lien vers la page contact
+}                                  // Fin de la navbar
+
+ui.theme {                        // Déclaration du thème global du site
+  mode "auto"                    // Mode de thème: auto (suivant OS), ou light/dark
+  primary "#6C5CE7"              // Couleur principale de la marque
+  radius 12                       // Rayon des arrondis (coins des cartes/boutons)
+}                                  // Fin du thème
+
+// -------------------------------
+// 8) Notes d'exécution
+// -------------------------------
+// - Le runtime détecte ces pages et routes et les déploie automatiquement.
+// - Les fonctions http.get/post internes peuvent consommer les endpoints déclarés ci-dessus.
+// - ui.params.id et ui.form.values sont fournis par le moteur UI.
+// - Pour initialiser le blog : POST /admin/seed une fois au démarrage.

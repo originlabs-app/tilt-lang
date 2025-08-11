@@ -1,0 +1,200 @@
+(* =========================================================
+   TILT — Grammar (v0.1-alpha)
+   Notation: EBNF (ISO 14977–style)
+   ========================================================= *)
+
+program        = { toplevel } ;
+
+toplevel       = use_stmt
+               | db_table_decl
+               | db_index_decl
+               | route_decl
+               | ui_page_decl
+               | ui_navbar_decl
+               | ui_theme_decl
+               | ui_component_decl
+               | guard_decl
+               | policy_role_decl
+               | fn_decl
+               | test_decl
+               | semicolon
+               ;
+
+semicolon      = ";" ;
+
+(* --------------- Lexical rules --------------- *)
+
+identifier     = ident_start , { ident_part } ;
+ident_start    = "_" | letter ;
+ident_part     = "_" | letter | digit ;
+
+letter         = ? A–Z a–z non-accent basic latin ? ;
+digit          = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+
+string_lit     = "\"" , { string_char } , "\"" ;
+string_char    = ? any char except " and newline, supports \n \t \" \\ ? ;
+
+int_lit        = digit , { digit } ;
+float_lit      = digit , { digit } , "." , digit , { digit } ;
+
+bool_lit       = "true" | "false" ;
+time_kw        = "now" "(" ")" ;
+
+json_lit       = "{" , [ json_pairs ] , "}" ;
+json_pairs     = json_pair , { "," , json_pair } ;
+json_pair      = ( string_lit | identifier ) , ":" , expr ;
+
+(* Comments *)
+comment_line   = "//" , { ? any char except newline ? } ;
+comment_block  = "/*" , { ? any char incl. newline ? } , "*/" ;
+
+(* --------------- Types --------------- *)
+
+type           = "int" | "float" | "bool" | "text" | "bytes" | "time" | "id" | "json"
+               | "list" "<" type ">"
+               | "map" "<" type "," type ">"
+               | "option" "<" type ">"
+               | "enum" "(" enum_values ")"
+               | "ref" "(" string_lit ")"    (* reference to table name *)
+               | identifier                   (* user-defined/alias future-proof *)
+               ;
+
+enum_values    = string_lit , { "," , string_lit } ;
+
+(* --------------- Declarations --------------- *)
+
+use_stmt       = "use" , identifier , [ "as" , identifier ] ;
+
+db_table_decl  = "db" "." "table" "(" , string_lit , "," , "schema" ":" , schema_obj , ")" ;
+schema_obj     = "{" , schema_fields , "}" ;
+schema_fields  = schema_field , { "," , schema_field } ;
+schema_field   = identifier , ":" , type , [ default_value ] , [ doc_annot ] ;
+default_value  = "=" , literal ;
+doc_annot      = "@doc" "(" , string_lit , ")" ;
+
+db_index_decl  = "db" "." "index" "(" , string_lit , "," , index_cols , ")" ;
+index_cols     = "[" , identifier , { "," , identifier } , "]" ;
+
+fn_decl        = "fn" , identifier , "(" , [ params ] , ")" , [ "->" , type_or_json ] , block ;
+params         = param , { "," , param } ;
+param          = identifier , ":" , type ;
+type_or_json   = type | "json" ;
+
+guard_decl     = "guard" , identifier , "(" , [ guard_params ] , ")" , block ;
+guard_params   = guard_param , { "," , guard_param } ;
+guard_param    = identifier , ":" , type ;
+
+policy_role_decl = "policy" "." "role" , string_lit , block_policy ;
+block_policy   = "{" , "can" ":" , "[" , string_lit , { "," , string_lit } , "]" , "}" ;
+
+route_decl     = "route" , http_method , string_lit
+                 , [ "use" , "[" , guard_ref , { "," , guard_ref } , "]" ]
+                 , "->" , route_target ;
+http_method    = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" ;
+guard_ref      = identifier | identifier , "(" , args? , ")" ;
+route_target   = identifier , "(" , [ args ] , ")"
+               | block                                      (* inline handler *) ;
+
+ui_page_decl   = "ui" "." "page" , string_lit , [ "path" , string_lit ] , [ "when" , expr ] , ui_block ;
+ui_navbar_decl = "ui" "." "navbar" , ui_block ;
+ui_theme_decl  = "ui" "." "theme" , ui_block ;
+ui_component_decl = "ui" "." "component" , string_lit , [ "props" , props_obj ] , ui_block ;
+props_obj      = "{" , props_fields , "}" ;
+props_fields   = props_field , { "," , props_field } ;
+props_field    = identifier , ":" , type ;
+
+test_decl      = "test" , string_lit , test_block ;
+test_block     = "{" , "given" ":" , test_given , "," ,
+                      "when" ":" , test_when , "," ,
+                      "then" ":" , test_then , "}" ;
+test_given     = call_expr | json_lit | block ;
+test_when      = call_expr | block ;
+test_then      = expr ;
+
+(* --------------- Statements --------------- *)
+
+block          = "{" , { stmt } , "}" ;
+stmt           = let_stmt
+               | const_stmt
+               | assign_stmt
+               | if_stmt
+               | for_stmt
+               | match_stmt
+               | return_stmt
+               | expr_stmt
+               | semicolon
+               ;
+
+let_stmt       = "let" , identifier , [ ":" , type ] , "=" , expr ;
+const_stmt     = "const" , identifier , ":" , type , "=" , literal ;
+assign_stmt    = lvalue , "=" , expr ;
+lvalue         = identifier | member_expr ;
+
+if_stmt        = "if" , expr , block , [ "else" , block ] ;
+
+for_stmt       = "for" , identifier , "in" , expr , block ;
+
+match_stmt     = "match" , expr , "{" , match_case , { match_case } , "}" ;
+match_case     = "case" , ( literal | "_" ) , block ;
+
+return_stmt    = "return" , [ expr ] ;
+
+expr_stmt      = expr ;
+
+(* --------------- Expressions --------------- *)
+
+expr           = pipe_expr ;
+pipe_expr      = logical_or , { "|>" , call_or_pipe } ;
+call_or_pipe   = call_expr | identifier ;
+
+logical_or     = logical_and , { "||" , logical_and } ;
+logical_and    = equality , { "&&" , equality } ;
+equality       = relational , { ("==" | "!=") , relational } ;
+relational     = additive , { ("<" | "<=" | ">" | ">=") , additive } ;
+additive       = multiplicative , { ("+" | "-") , multiplicative } ;
+multiplicative = unary , { ("*" | "/" | "%") , unary } ;
+unary          = [ "!" | "-" ] , primary ;
+
+primary        = literal
+               | identifier
+               | call_expr
+               | member_expr
+               | index_expr
+               | "(" , expr , ")"
+               | cast_expr
+               ;
+
+literal        = int_lit | float_lit | string_lit | bool_lit | json_lit | time_kw ;
+
+member_expr    = primary , "." , identifier ;
+index_expr     = primary , "[" , expr , "]" ;
+
+call_expr      = identifier , "(" , [ args ] , ")" ;
+args           = expr , { "," , expr } ;
+
+cast_expr      = expr , "as" , struct_type ;
+struct_type    = "{" , struct_fields , "}" ;
+struct_fields  = struct_field , { "," , struct_field } ;
+struct_field   = identifier , ":" , ( type | optional_type ) ;
+optional_type  = type , "?" ;
+
+(* --------------- UI block body --------------- *)
+
+ui_block       = "{" , { ui_stmt } , "}" ;
+ui_stmt        = ui_node | stmt ;
+
+ui_node        = ui_tag , [ ui_attrs ] , ui_body ;
+ui_tag         = identifier | string_lit ;
+ui_attrs       = { ui_attr } ;
+ui_attr        = identifier , "=" , ui_attr_value ;
+ui_attr_value  = expr | string_lit | int_lit | bool_lit ;
+
+ui_body        = "{" , { ui_stmt } , "}"
+               | ;  (* self-closing if no body *)
+
+(* --------------- Reserved words --------------- *)
+
+(* Keywords (reserved): *)
+(* use, db, table, schema, index, fn, let, const, if, else, for, match, case, return,
+   route, GET, POST, PUT, DELETE, PATCH, ui, page, navbar, theme, component,
+   guard, policy, role, test, as, when, true, false, now, enum, ref, json, time, id *)

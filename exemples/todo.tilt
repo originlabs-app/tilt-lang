@@ -1,0 +1,75 @@
+use db
+use ui
+use http
+
+// --- Données ---
+db.table("todos", schema:{ id:id, title:text, done:bool=false, created:time })
+
+// --- Actions ---
+fn add_todo(title:text) -> json {
+  let row = db.insert("todos", { title: title, created: now() })
+  return row
+}
+
+fn toggle_todo(id:id, v:bool) -> json {
+  return db.update("todos", id, { done: v })
+}
+
+fn list_todos() -> json {
+  return db.select("todos", {})
+}
+
+fn remove_todo(id:id) -> bool {
+  let r = db.delete("todos", id)
+  if r.ok { return true } else { return false }
+}
+
+// --- API ---
+route GET "/api/todos" -> list()
+route POST "/api/todos" -> create()
+route POST "/api/todos/:id/toggle" -> toggle()
+route DELETE "/api/todos/:id" -> remove()
+
+fn list() -> json {
+  return list_todos()
+}
+
+fn create() -> json {
+  let body = http.request.body.json
+  return add_todo(body.title)
+}
+
+fn toggle() -> json {
+  let id = http.params.id
+  let body = http.request.body.json
+  return toggle_todo(id, body.done)
+}
+
+fn remove() -> json {
+  let id = http.params.id
+  let ok = remove_todo(id)
+  return { ok: ok }
+}
+
+// --- UI ---
+ui.page "Todos" {
+  header {
+    title "Todos"
+    subtitle "Une simple app CRUD en TILT"
+  }
+
+  section {
+    input title:text placeholder "Nouvelle tâche" required
+    button "Ajouter" on_click=add_todo(title)
+  }
+
+  list for t in list_todos() {
+    row {
+      toggle bind=t.done on_change=toggle_todo(t.id, t.done)
+      text t.title
+      if t.done { badge "fait" }
+      spacer
+      button "✕" on_click=remove_todo(t.id)
+    }
+  }
+}

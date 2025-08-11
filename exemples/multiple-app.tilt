@@ -1,0 +1,216 @@
+// =============================================
+// TILT — Exemples canoniques (v0.1‑alpha)
+// 1) TODO
+// 2) Marketplace (mini)
+// 3) CRM (lite)
+// 4) Site Web (landing + blog)
+// ---------------------------------------------
+
+// ============ 1) TODO =========================
+use http
+use db
+use ui
+
+// Schéma
+db.table("todos", schema:{ id:id, title:text, done:bool=false, created_at:time })
+
+// API
+fn list_todos() -> json { return db.select("todos", {}, limit:200) }
+fn add_todo()  -> json {
+  let b = http.request.body.json
+  let row = db.insert("todos", { id:new_id(), title:b.title, created_at:now() })
+  return { ok:true, todo:row }
+}
+fn toggle_done() -> json {
+  let id = http.params.id
+  let t = db.select("todos", { id:id }, limit:1)
+  if len(t)==0 { return { ok:false, error:"not_found" } }
+  db.update("todos", id, { done: !t[0].done })
+  return { ok:true }
+}
+
+route GET  "/api/todos"        -> list_todos()
+route POST "/api/todos"        -> add_todo()
+route POST "/api/todos/:id/t"  -> toggle_done()
+
+// UI
+ui.theme { mode:"auto", primary:"#6C5CE7", radius:12 }
+ui.page "Todos" path "/" {
+  section pad=24 {
+    form id="f" on_submit=do_add() inline=true {
+      input title:text placeholder "What needs to be done?" required
+      button "Add" variant="primary"
+    }
+    let r = http.get("/api/todos")
+    if r.ok {
+      list for t in r.value.json {
+        card { text t.title; toggle bind=t.done on_change=do_toggle(t.id) }
+      }
+    }
+  }
+}
+fn do_add() -> json { let f = ui.form.values; let r = http.post("/api/todos", { title:f.title })
+  if r.ok { return { reload:true } } else { return { toast:"Error" } } }
+fn do_toggle(id:id) -> json { let r = http.post("/api/todos/"+id+"/t", {})
+  if r.ok { return { reload:true } } else { return { toast:"Error" } } }
+
+// ============ 2) MARKETPLACE (mini) ===========
+use validate
+
+// Schémas
+db.table("products", schema:{ id:id, name:text, price_cents:int, image_url:text, stock:int=0, created_at:time })
+db.table("carts",    schema:{ id:id, created_at:time })
+db.table("cart_items", schema:{ id:id, cart_id:id, product_id:id, qty:int=1 })
+
+fn ensure_cart() -> text {
+  let cid = ui.cookie.get("cart_id")
+  if cid=="" { cid=new_id(); db.insert("carts",{id:cid,created_at:now()}); ui.cookie.set("cart_id", cid, { max_age: 60*60*24*30 }) }
+  return cid
+}
+
+fn api_products() -> json { return db.select("products", {}, limit:200) }
+fn api_cart() -> json {
+  let cid = ensure_cart(); let items = db.select("cart_items", { cart_id:cid })
+  let out = []; let total = 0
+  for it in items {
+    let p = db.select("products", { id:it.product_id }, limit:1)
+    if len(p)>0 { let line = it.qty * p[0].price_cents; total = total + line; out = out + [{ id:it.id, name:p[0].name, price_cents:p[0].price_cents, image_url:p[0].image_url, qty:it.qty, product_id:it.product_id, line_total:line }] }
+  }
+  return { cart_id:cid, items:out, total_cents:total }
+}
+fn api_add_to_cart() -> json {
+  let b = http.request.body.json
+  let cid = ensure_cart(); let row = db.select("cart_items", { cart_id:cid, product_id:b.product_id }, limit:1)
+  if len(row)==0 { 
+    let qty = 1
+    if b.qty { qty = b.qty }
+    db.insert("cart_items", { id:new_id(), cart_id:cid, product_id:b.product_id, qty:qty }) 
+  }
+  else { 
+    let qty = 1
+    if b.qty { qty = b.qty }
+    db.update("cart_items", row[0].id, { qty: row[0].qty + qty }) 
+  }
+  return api_cart()
+}
+
+route GET  "/api/products"    -> api_products()
+route GET  "/api/cart"        -> api_cart()
+route POST "/api/cart/add"    -> api_add_to_cart()
+
+// UI
+ui.navbar { brand "TILT Store"; link "Catalogue" to "/"; link "Panier" to "/cart" }
+ui.page "Catalogue" path "/" {
+  let r = http.get("/api/products")
+  section pad=24 { grid cols=3 cols_md=1 gap=16 {
+    if r.ok { list for p in r.value.json {
+      card { image src p.image_url alt p.name height=160; title p.name; text (p.price_cents/100)+" €"; actions { button "Add" on_click=add(p.id) } }
+    } }
+  } }
+}
+fn add(pid:id) -> json { let r = http.post("/api/cart/add", { product_id:pid, qty:1 })
+  if r.ok { return { toast:"Added" } } else { return { toast:"Error" } } }
+ui.page "Panier" path "/cart" {
+  let c = http.get("/api/cart")
+  section pad=24 {
+    if c.ok {
+      list for it in c.value.json.items { card { title it.name; text it.qty+" × "+(it.price_cents/100)+" €"; right { text (it.line_total/100)+" €" } } }
+      divider
+      title "Total: "+(c.value.json.total_cents/100)+" €"
+      button "Checkout" variant="primary"
+    }
+  }
+}
+
+// ============ 3) CRM (lite) ==================
+use auth
+
+// Schémas
+db.table("users", schema:{ id:id, email:text, password_hash:text, full_name:text, role:text="user", created_at:time })
+db.table("contacts", schema:{ id:id, owner_id:id, name:text, email:text, company:text, phone:text, stage:text="lead", created_at:time })
+db.table("deals", schema:{ id:id, contact_id:id, owner_id:id, title:text, value_cents:int, status:text="open", step:text="new", created_at:time })
+
+guard require_auth(){ if !auth.is_authenticated(){ http.abort(401) } }
+
+// Auth (MVP)
+fn signup() -> json {
+  let b = http.request.body.json
+  let u = db.insert("users", { id:new_id(), email:b.email, password_hash:auth.hash_password(b.password), full_name:b.full_name, created_at:now() })
+  auth.set_session(token: auth.issue(user_id:u.id, claims:{ role:"user" }))
+  return { ok:true }
+}
+fn signin() -> json {
+  let b = http.request.body.json
+  let r = db.select("users", { email:b.email }, limit:1)
+  if len(r)==0 || !auth.verify_password(b.password, r[0].password_hash) { return { ok:false, error:"invalid_creds" } }
+  auth.set_session(token: auth.issue(user_id:r[0].id, claims:{ role:r[0].role }))
+  return { ok:true }
+}
+route POST "/api/auth/signup" -> signup()
+route POST "/api/auth/signin" -> signin()
+
+// Contacts API
+fn contacts_list() -> json { let me = auth.current(); return db.select("contacts", { owner_id:me.id }, limit:500) }
+fn contact_create() -> json {
+  let me = auth.current(); let b = http.request.body.json
+  let row = db.insert("contacts", { id:new_id(), owner_id:me.id, name:b.name, email:b.email, company:b.company, phone:b.phone, created_at:now() })
+  return { ok:true, contact:row }
+}
+route GET  "/api/contacts" use [require_auth] -> contacts_list()
+route POST "/api/contacts" use [require_auth] -> contact_create()
+
+// UI
+ui.navbar { brand "TILT CRM"; link "Dashboard" to "/"; link "Contacts" to "/contacts" }
+ui.page "Sign in" path "/signin" when !auth.is_authenticated() {
+  section pad=48 align:"center" { form id="f" on_submit=do_signin() width=420 { input email:text label "Email" required; input password:text type:"password" label "Password" required; button "Sign in" variant="primary" width:"100%" } }
+}
+fn do_signin() -> json { let f = ui.form.values; let r = http.post("/api/auth/signin", { email:f.email, password:f.password })
+  if r.ok { return { redirect:"/" } } else { return { toast:"Invalid" } } }
+
+ui.page "Contacts" path "/contacts" when auth.is_authenticated() {
+  section pad=24 {
+    actions { button "New" on_click=open_new() }
+    let r = http.get("/api/contacts")
+    if r.ok {
+      table { thead ["Name","Email","Company","Phone"]; tbody for c in r.value.json { tr { td c.name; td c.email; td c.company; td c.phone } } }
+    } else { note "No contacts" }
+  }
+}
+ui.dialog "new_contact" { form id="nc" on_submit=create_contact() { input name:text label "Name" required; input email:text label "Email"; input company:text label "Company"; input phone:text label "Phone"; button "Create" variant="primary" } }
+fn open_new() -> json { return { dialog:"new_contact" } }
+fn create_contact() -> json { let f=ui.form.values
+  let r=http.post("/api/contacts", { name:f.name, email:f.email, company:f.company, phone:f.phone })
+  if r.ok { return { reload:true } } else { return { toast:"Error" } } }
+
+// ============ 4) SITE WEB (landing + blog) ==== 
+// DB
+db.table("posts", schema:{ id:id, title:text, excerpt:text, body:text, published:bool=true, created_at:time })
+
+// API
+fn api_posts() -> json { return db.select("posts", { published:true }, limit:100) }
+fn api_post()  -> json { let id=http.params.id; let r=db.select("posts", { id:id }, limit:1); return len(r)==0 ? { error:"not_found" } : r[0] }
+route GET "/api/posts"    -> api_posts()
+route GET "/api/posts/:id" -> api_post()
+
+// UI
+ui.navbar { brand "TILT"; link "Home" to "/"; link "Blog" to "/blog" }
+ui.theme  { mode:"auto", primary:"#6C5CE7", radius:14 }
+
+ui.page "Home" path "/" {
+  header { title "Build with TILT"; subtitle "One file. One language. Fullstack & AI‑ready."; actions { button "Get Started" link="/blog" } }
+  section { grid cols=3 cols_md=1 gap=20 { card { title "LLM‑friendly" text "Minimal, deterministic" } card { title "Fullstack" text "HTTP + DB + UI" } card { title "Portable" text "Local → Cloud" } } }
+}
+
+ui.page "Blog" path "/blog" {
+  let r = http.get("/api/posts")
+  section pad=24 {
+    title "Latest posts"
+    if r.ok { list for p in r.value.json { card link to ("/blog/"+p.id) { title p.title; text p.excerpt; meta p.created_at } } } else { note "No posts yet" }
+  }
+}
+
+ui.page "Post" path "/blog/:id" {
+  let id = ui.params.id
+  let r = http.get("/api/posts/"+id)
+  section pad=24 { if r.ok { article { title r.value.json.title; text r.value.json.body; meta r.value.json.created_at } } else { note "Not found" } }
+}
