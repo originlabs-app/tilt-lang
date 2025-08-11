@@ -9,7 +9,7 @@ Timeframe: ~12 weeks in 4 phases. Adjust pragmatically as we learn.
 Current status:
 - Legal and repo basics in place (LICENSE, NOTICE.md, TRADEMARK.md, README, CI)
 - Docs skeleton present (docs/ast.md, docs/runtime-arch.md, docs/benchmark.md)
-- Examples available under `exemples/`
+- Examples available under `examples/`
 - CI runs lint and optional tests
 
 ---
@@ -17,7 +17,7 @@ Current status:
 ## Phase 1 — Repo Hygiene + Syntax Decision (Weeks 1–2)
 
 - Decide MVP syntax path: Align examples (A) vs Extend EBNF (B)
-- If A (recommended): refactor `exemples/*.tilt` to MVP
+- If A (recommended): refactor `examples/*.tilt` to MVP
   - Replace `?:`, `or`, named args, `on click`/`on submit`, `when` in UI
   - Add a script to verify MVP conformance (grep-based for now)
 - If B: update `spec/grammar.ebnf`, whitepaper, and examples to match
@@ -39,7 +39,7 @@ Deliverables:
 - Add targeted unit tests (no need for full coverage yet)
 
 Deliverables:
-- `tilt parse` and `tilt fmt` usable on `exemples/*.tilt`
+- `tilt parse` and `tilt fmt` usable on `examples/*.tilt`
 - CI job to run parsing/formatting check on examples
 
 ---
@@ -53,7 +53,7 @@ Deliverables:
 - Expose `tilt serve` for local dev loop; hot reload optional
 
 Deliverables:
-- `tilt serve exemples/todo.tilt` serves a minimal working app
+- `tilt serve examples/todo.tilt` serves a minimal working app
 - One end-to-end example verified
 
 ---

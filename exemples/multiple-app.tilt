@@ -1,5 +1,5 @@
 // =============================================
-// TILT — Exemples canoniques (v0.1‑alpha)
+// TILT — Canonical examples (v0.1‑alpha)
 // 1) TODO
 // 2) Marketplace (mini)
 // 3) CRM (lite)
@@ -99,8 +99,8 @@ route GET  "/api/cart"        -> api_cart()
 route POST "/api/cart/add"    -> api_add_to_cart()
 
 // UI
-ui.navbar { brand "TILT Store"; link "Catalogue" to "/"; link "Panier" to "/cart" }
-ui.page "Catalogue" path "/" {
+ui.navbar { brand "TILT Store"; link "Catalog" to "/"; link "Cart" to "/cart" }
+ui.page "Catalog" path "/" {
   let r = http.get("/api/products")
   section pad=24 { grid cols=3 cols_md=1 gap=16 {
     if r.ok { list for p in r.value.json {
@@ -110,7 +110,7 @@ ui.page "Catalogue" path "/" {
 }
 fn add(pid:id) -> json { let r = http.post("/api/cart/add", { product_id:pid, qty:1 })
   if r.ok { return { toast:"Added" } } else { return { toast:"Error" } } }
-ui.page "Panier" path "/cart" {
+ui.page "Cart" path "/cart" {
   let c = http.get("/api/cart")
   section pad=24 {
     if c.ok {

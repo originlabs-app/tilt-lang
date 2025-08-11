@@ -142,10 +142,10 @@ Early internal benchmarks on 50 common web development tasks using GPT-5, Claude
 
 ## Available Examples
 
-- `exemples/todo.tilt` — CRUD API + UI in one file
-- `exemples/SAAS-CRM.tilt` — SaaS CRM with Auth, Contacts, Deals, Dashboard
-- `exemples/multiple-app.tilt` — Multi-app demo (todos, shop cart, blog)
-- `exemples/website.tilt` — Simple website/blog
+- `examples/todo.tilt` — CRUD API + UI in one file
+- `examples/SAAS-CRM.tilt` — SaaS CRM with Auth, Contacts, Deals, Dashboard
+- `examples/multiple-app.tilt` — Multi-app demo (todos, shop cart, blog)
+- `examples/website.tilt` — Simple website/blog
 
 ## Development and Testing
 

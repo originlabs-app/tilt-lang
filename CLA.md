@@ -1,10 +1,10 @@
 # Contributor License Agreement (CLA)
 
-En contribuant à TILT, vous déclarez que:
+By contributing to TILT, you confirm that:
 
-1. Vous êtes l'auteur original ou avez le droit légal de contribuer.
-2. Vous accordez à Origin Labs une licence mondiale, non exclusive, gratuite et irrévocable pour utiliser, reproduire, créer des œuvres dérivées, afficher, exécuter, sous-licencier et distribuer vos contributions sous la licence du projet (Apache-2.0).
-3. Votre contribution ne viole pas les droits de tiers.
-4. Vous comprenez qu'elle peut être redistribuée selon la licence du projet.
+1. You are the original author or have the legal right to contribute.
+2. You grant Origin Labs a worldwide, non-exclusive, royalty-free, irrevocable license to use, reproduce, create derivative works, display, perform, sublicense, and distribute your contributions under the project license (Apache-2.0).
+3. Your contribution does not infringe third-party rights.
+4. You understand it may be redistributed under the project license.
 
-Pour les contributions d'entreprise, contactez tilt@originlabs.app.
+For corporate contributions, contact tilt@originlabs.app.

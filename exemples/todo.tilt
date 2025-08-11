@@ -2,7 +2,7 @@ use db
 use ui
 use http
 
-// --- Données ---
+// --- Data ---
 db.table("todos", schema:{ id:id, title:text, done:bool=false, created:time })
 
 // --- Actions ---
@@ -55,19 +55,19 @@ fn remove() -> json {
 ui.page "Todos" {
   header {
     title "Todos"
-    subtitle "Une simple app CRUD en TILT"
+    subtitle "A simple CRUD app in TILT"
   }
 
   section {
-    input title:text placeholder "Nouvelle tâche" required
-    button "Ajouter" on_click=add_todo(title)
+    input title:text placeholder "New task" required
+    button "Add" on_click=add_todo(title)
   }
 
   list for t in list_todos() {
     row {
       toggle bind=t.done on_change=toggle_todo(t.id, t.done)
       text t.title
-      if t.done { badge "fait" }
+      if t.done { badge "done" }
       spacer
       button "✕" on_click=remove_todo(t.id)
     }

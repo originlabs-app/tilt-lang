@@ -32,7 +32,7 @@ Pros: Matches current examples; possibly more ergonomic.
 Cons: Increases grammar surface; higher risk for ambiguity; more work for parser/typechecker; weakens MVP simplicity.
 
 ## Impacted Files
-- exemples/*.tilt (multiple locations)
+- examples/*.tilt (multiple locations)
 - spec/grammar.ebnf (keywords and productions)
 - spec/whitepaper.md and spec/errors.md (docs alignment)
 
@@ -43,4 +43,3 @@ Cons: Increases grammar surface; higher risk for ambiguity; more work for parser
 
 ## Additional Notes
 Maintainers suggested to push current changes and track this decision as an issue.
-

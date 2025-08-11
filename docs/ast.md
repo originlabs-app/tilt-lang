@@ -1,6 +1,6 @@
-# TILT AST — Vue d'ensemble (v0.1)
+# TILT AST — Overview (v0.1)
 
-Ce document décrit les principaux nœuds de l'AST TILT pour guider l'implémentation du lexer, parser et interpréteur.
+This document outlines the main AST nodes of TILT to guide the lexer, parser, and interpreter implementation.
 
 ## Diagramme (Mermaid UML)
 
@@ -144,7 +144,7 @@ classDiagram
   Program --> UIComponentDecl
 ```
 
-## Exemple d'AST (extrait) — Todo minimal
+## AST Example (excerpt) — Minimal Todo
 ```json
 {
   "type": "Program",
@@ -179,8 +179,7 @@ classDiagram
 }
 ```
 
-## Notes d'implémentation
-- Appels: arguments positionnels en v0.1 (pas de paramètres nommés).
-- Opérateurs `?:` et `or` non inclus en v0.1.
-- Attributs UI de la forme `name = value`.
-
+## Implementation Notes
+- Calls: positional arguments in v0.1 (no named parameters).
+- Operators `?:` and `or` are not included in v0.1.
+- UI attributes use the `name = value` form.

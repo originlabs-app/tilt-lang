@@ -185,35 +185,35 @@ ui.page "Blog" path "/blog" {  // Déclare la page Blog, accessible via /blog
   }                             // Fin de la section
 }                               // Fin de la page Blog
 
-ui.page "Post" path "/blog/:id" { // Page de détail d'un article, :id est un paramètre d'URL
-  let id = ui.params.id          // Récupère le paramètre :id fourni par le runtime UI
-  let resp = http.get(url: "/api/posts/" + id) // Appelle l'API interne pour ce post
+ui.page "Post" path "/blog/:id" { // Post detail page, :id path param
+  let id = ui.params.id
+  let resp = http.get(url: "/api/posts/" + id)
 
-  if resp.ok {                   // Si requête OK
-    let post = resp.value.json   // Récupère l'objet post du JSON
-    article {                    // Bloc article (mise en page dédiée)
-      title post.title           // Titre de l'article
-      text post.body             // Corps/texte de l'article
-      meta post.created_at       // Date
-      actions { button "← Tous les posts" link to "/blog" } // Bouton retour vers la liste
-    }                            // Fin bloc article
-  } else {                       // Si l'appel a échoué
-    note "Article introuvable"   // Message d'erreur utilisateur
-  }                              // Fin du else
-}                                // Fin de la page Post
+  if resp.ok {
+    let post = resp.value.json
+    article {
+      title post.title
+      text post.body
+      meta post.created_at
+      actions { button "← All posts" link to "/blog" }
+    }
+  } else {
+    note "Post not found"
+  }
+}
 
-ui.page "Contact" path "/contact" { // Page de contact
-  section {                      // Section principale
-    title "Nous contacter"       // Titre de section
-    form id "contactForm" on submit send_contact() { // Formulaire avec un id et une action à la soumission
-      input email:text label "Email" placeholder "vous@exemple.com" required // Champ email obligatoire
-      input subject:text label "Sujet" placeholder "Sujet du message"        // Champ sujet (optionnel ici)
-      textarea message:text label "Message" placeholder "Écrivez votre message..." required // Champ message obligatoire
-      button "Envoyer"            // Bouton de soumission
-    }                              // Fin du formulaire
-    note "Nous répondons en 24h." // Note d'information
-  }                                // Fin de la section
-}                                  // Fin de la page Contact
+ui.page "Contact" path "/contact" {
+  section {
+    title "Contact us"
+    form id "contactForm" on submit send_contact() {
+      input email:text label "Email" placeholder "you@example.com" required
+      input subject:text label "Subject" placeholder "Message subject"
+      textarea message:text label "Message" placeholder "Write your message..." required
+      button "Send"
+    }
+    note "We reply within 24h."
+  }
+}
 
 fn send_contact() -> json {       // Fonction appelée lors de la soumission du formulaire
   let f = ui.form.values          // Récupère les valeurs du formulaire depuis le runtime UI
@@ -233,23 +233,23 @@ fn send_contact() -> json {       // Fonction appelée lors de la soumission du 
 // 7) Navigation et thème
 // -------------------------------
 
-ui.navbar {                       // Barre de navigation en haut du site
-  brand "TILT"                   // Nom/logo de marque affiché
-  link "Accueil" to "/"          // Lien vers l'accueil
-  link "Blog" to "/blog"         // Lien vers le blog
-  link "Contact" to "/contact"   // Lien vers la page contact
-}                                  // Fin de la navbar
+ui.navbar {
+  brand "TILT"
+  link "Home" to "/"
+  link "Blog" to "/blog"
+  link "Contact" to "/contact"
+}
 
-ui.theme {                        // Déclaration du thème global du site
-  mode "auto"                    // Mode de thème: auto (suivant OS), ou light/dark
-  primary "#6C5CE7"              // Couleur principale de la marque
-  radius 12                       // Rayon des arrondis (coins des cartes/boutons)
-}                                  // Fin du thème
+ui.theme {
+  mode "auto"
+  primary "#6C5CE7"
+  radius 12
+}
 
 // -------------------------------
-// 8) Notes d'exécution
+// 8) Execution notes
 // -------------------------------
-// - Le runtime détecte ces pages et routes et les déploie automatiquement.
-// - Les fonctions http.get/post internes peuvent consommer les endpoints déclarés ci-dessus.
-// - ui.params.id et ui.form.values sont fournis par le moteur UI.
-// - Pour initialiser le blog : POST /admin/seed une fois au démarrage.
+// - The runtime detects these pages/routes and deploys them automatically.
+// - Internal http.get/post calls can consume the endpoints above.
+// - ui.params.id and ui.form.values are provided by the UI engine.
+// - To initialize the blog: POST /admin/seed once at startup.

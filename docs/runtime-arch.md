@@ -1,8 +1,8 @@
 # TILT Runtime Architecture (v0.1)
 
-Ce document décrit l'architecture d'exécution du runtime TILT v0.1.
+This document describes the runtime architecture for TILT v0.1.
 
-## Schéma général
+## High-level Diagram
 ```mermaid
 flowchart LR
   A[Source .tilt] --> B[Lexer]
@@ -16,31 +16,30 @@ flowchart LR
   G <--> J[CLI Serve/Watch]
 ```
 
-## Composants
-- Lexer: tokens déterministes, commentaires `// /* */`.
-- Parser: conforme à `spec/grammar.ebnf`, produit l'AST (voir `docs/ast.md`).
-- Type check (lite): signatures `fn`, cast `as { ... }`, types primitifs.
-- Interpreter: exécute fonctions/guards/routes, résout stdlib.
+## Components
+- Lexer: deterministic tokens, `// /* */` comments.
+- Parser: follows `spec/grammar.ebnf`, produces AST (see `docs/ast.md`).
+- Type check (lite): `fn` signatures, cast `as { ... }`, primitive types.
+- Interpreter: executes functions/guards/routes, resolves stdlib.
 - Stdlib: `http`, `db` (SQLite), `ui` (SSR), `auth`, `validate`, `policy`.
 
-## Boucle d'exécution
-1. Chargement → AST
-2. Enregistrement: tables, indexes, routes, UI
-3. Démarrage serveur (FastAPI/Starlette) + migrations SQLite
-4. Requête: guards → handler → réponse JSON/HTML
+## Execution Loop
+1. Load → AST
+2. Register: tables, indexes, routes, UI
+3. Start server (FastAPI/Starlette) + SQLite migrations
+4. Request: guards → handler → JSON/HTML response
 
 ## CLI (MVP)
-- `tilt serve app.tilt` — serveur + hot reload basique
-- `tilt run app.tilt` — exécution utilitaire
-- `tilt fmt app.tilt` — formatage canonique v0.1
-- `tilt test` — placeholder (tests TILT à venir)
+- `tilt serve app.tilt` — dev server + basic hot reload
+- `tilt run app.tilt` — utility execution
+- `tilt fmt app.tilt` — canonical formatting v0.1
+- `tilt test` — placeholder (TILT tests TBD)
 
-## Observabilité & Erreurs
-- Logs JSON: `{request_id, route, duration_ms, db_queries, error?}`
-- Mapping HTTP ↔ Codes TILT: voir `spec/errors.md`
+## Observability & Errors
+- JSON logs: `{request_id, route, duration_ms, db_queries, error?}`
+- HTTP ↔ TILT error codes: see `spec/errors.md`
 
-## Limites v0.1
-- SQLite uniquement, pas d'async utilisateur
-- Pas de paramètres nommés, pas d'opérateurs `?:`/`or`
-- UI SSR (hydratation minimale via actions)
-
+## Limitations v0.1
+- SQLite only, no user async
+- No named parameters, no `?:`/`or` operators
+- UI SSR (minimal hydration via actions)
